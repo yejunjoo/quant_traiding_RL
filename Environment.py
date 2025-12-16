@@ -22,11 +22,11 @@ class StockTradingEnv(gym.Env):
         # df_matrix
         # [Time step, ticker_index, feature_index]
         # features: Close, High, Low, Open, Volume
-        self.d_close = np.squeeze(df_matrix[:,:,0])
-        self.d_high = np.squeeze(df_matrix[:,:,1])
-        self.d_low = np.squeeze(df_matrix[:,:,2])
-        self.d_open = np.squeeze(df_matrix[:,:,3])
-        self.d_volume = np.squeeze(df_matrix[:,:,4])
+        self.d_close = df_matrix[:,:,0]
+        self.d_high = df_matrix[:,:,1]
+        self.d_low = df_matrix[:,:,2]
+        self.d_open = df_matrix[:,:,3]
+        self.d_volume = df_matrix[:,:,4]
 
         self.min_balance = np.min(self.d_close)
         self.max_balance = max_balance
@@ -118,8 +118,8 @@ class StockTradingEnv(gym.Env):
         max_sells = self.num_stocks
         # normalize된 값 조심
 
-        print(f"Timestep: {self.timestep}")
-        print(f"Balance prev\t: {self.curr_balance}")
+        print(f"\nTimestep: {self.timestep}")
+        print(f"Balance prev\t: {self.curr_balance//10000}")
         print(f"Last prices\t: {last_prices}")
 
         for stock_idx in range(self.num_ticker):
@@ -134,7 +134,7 @@ class StockTradingEnv(gym.Env):
                 actual_buy = min(max_buy_per_stock, n_trade_per_stock)
                 self.curr_balance -= last_price_per_stock *actual_buy
                 self.num_stocks[stock_idx] += actual_buy
-                print(f"Buy\t\t: {actual_buy}")
+                # print(f"Buy\t\t: {actual_buy}")
 
             elif n_trade_per_stock<0:
                 # sell
@@ -142,12 +142,12 @@ class StockTradingEnv(gym.Env):
                 actual_sell = min(max_sell_per_stock, n_sell)
                 self.curr_balance += last_price_per_stock*actual_sell
                 self.num_stocks[stock_idx] -= actual_sell
-                print(f"Sell\t\t: {actual_sell}")
+                # print(f"Sell\t\t: {actual_sell}")
 
             else:
                 # Do nothing
                 pass
-        print(f"Balance after\t: {self.curr_balance}")
+        # print(f"Balance after\t: {self.curr_balance}")
 
 
         last_day_idx = self.max_timestep -1
@@ -155,6 +155,7 @@ class StockTradingEnv(gym.Env):
         terminated = (self.curr_balance < self.init_balance * self.bankrupt_coef)
 
         reward = self.compute_reward()
+        print(f"Reward\t: {reward}")
 
         if terminated:
             reward = self.termination_reward
@@ -176,10 +177,10 @@ class StockTradingEnv(gym.Env):
 
 
     def _get_obs(self):
-        agent_obs = np.array([
-            self.curr_balance,
-            self.num_stocks
-        ], dtype=np.float32)
+        agent_obs = np.concatenate([
+            np.array([self.curr_balance]),
+            self.num_stocks.flatten()
+        ]).astype(np.float32)
 
         market_obs = np.array([
             self.d_close[self.timestep, :],
@@ -197,6 +198,6 @@ class StockTradingEnv(gym.Env):
     def compute_reward(self):
         next_prices = self.d_close[self.timestep+1]
         new_portfolio_value = self.curr_balance + np.sum(self.num_stocks *next_prices)
-        reward = (new_portfolio_value - self.portfolio_value)
+        reward = (new_portfolio_value - self.portfolio_value)/self.init_balance
         self.portfolio_value = new_portfolio_value
         return reward

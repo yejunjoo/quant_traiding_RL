@@ -21,6 +21,7 @@ class MLP(nn.module):
         self.input_shape = [input_size]
         self.output_shape = [output_size]
 
+    @staticmethod
     def init_weights(sequential, scales):
         [torch.nn.init.orthogonal_(module.weight, gain=scales[idx]) for idx, module in
          enumerate(mod for mod in sequential if isinstance(mod, nn.Linear))]
