@@ -3,14 +3,20 @@ from gymnasium import spaces
 import numpy as np
 
 
-class Environment(gym.Env):
-    def __init__(self, start_date, df_matrix, max_balance=1e8):
-        super(Environment, self).__init__()
+class StockTradingEnv(gym.Env):
+    def __init__(self,
+                 df_matrix,
+                 bankrupt_coef=0.3,
+                 termination_reward=-1e4,
+                 max_balance=1e7):
+        super().__init__()
+
+
         self.max_timestep, self.num_ticker, self.num_feat = df_matrix.shape
-        assert self.num_ticker == 1, "For now, only for single ticker"
+        # assert self.num_ticker == 1, "For now, only for single ticker"
+        self.bankrupt_coef = bankrupt_coef
+        self.termination_reward = termination_reward
 
-
-        self.start_date = start_date
         self.timestep = 0
 
         # df_matrix
@@ -27,17 +33,16 @@ class Environment(gym.Env):
         # todo: multi ticker system
 
 
-        self.agent_obs_dim = 2
-        # curr_balance
-        # num_stock
-        agent_min = np.array([0.0, 0], np.float32)
-        agent_max = np.array([np.inf, np.inf], np.float32)
+        self.agent_obs_dim = 1 + self.num_ticker
+        # curr_balance + num_stock(per ticker)
+        agent_min = np.zeros(self.agent_obs_dim, np.float32)
+        agent_max = np.full_like(agent_min, np.inf)
         assert len(agent_min) == self.agent_obs_dim
         assert len(agent_max) == self.agent_obs_dim
 
-        self.market_obs_dim = 5
-        market_min = np.array([0.0, 0.0, 0.0, 0.0, 0.0], np.float32)
-        market_max = np.array([np.inf, np.inf, np.inf, np.inf, np.inf], np.float32)
+        self.market_obs_dim = 5 * self.num_ticker
+        market_min = np.zeros(self.market_obs_dim, np.float32)
+        market_max = np.full_like(market_min, np.inf)
         assert len(market_min) == self.market_obs_dim
         assert len(market_max) == self.market_obs_dim
 
@@ -61,7 +66,7 @@ class Environment(gym.Env):
 
         self.action_dim = self.num_ticker
         self.action_space = spaces.Box(
-            low=-np.inf,
+            low=(-1)*np.inf,
             high=np.inf,
             shape=(self.action_dim,),
             dtype=np.float32
@@ -69,89 +74,129 @@ class Environment(gym.Env):
 
 
         self.curr_balance = -1.0
-        self.num_stock = -1
+        self.init_balance = -1.0
+        self.num_stocks = np.zeros(self.num_ticker, dtype=int)
         self.obs_dict = {}
         self.portfolio_value = -1.0
         self.reset()
 
-    def step(self, action):
-        terminated = False
 
-        last_price = self.d_close[self.timestep]
 
-        assert len(action) == 1, "For now, only for single ticker"
-        n_trade = int(round(action[0]))
-
-        curr_balance = self.curr_balance
-        max_buy = int(curr_balance // last_price)
-        max_sell = self.num_stock
-        # normalize된 값 조심
-
-        if n_trade >0:
-            # buy
-            actual_buy = min(max_buy, n_trade)
-            self.curr_balance -= last_price*actual_buy
-            self.num_stock += actual_buy
-        elif n_trade<0:
-            # sell
-            n_sell = -n_trade
-            actual_sell = min(max_sell, n_sell)
-            self.curr_balance += last_price*actual_sell
-            self.num_stock -= actual_sell
-        else:
-            # Do nothing
-            pass
-
-        self.timestep += 1
-        terminated = terminated or (self.timestep >= self.max_timestep - 1)
-        # 이거 끝내는 step 맞나? 맞는듯..?
-        truncated = False
-
-        if terminated:
-            next_price = last_price
-        else:
-            next_price = self.d_close[self.timestep]
-
-        new_portfolio_value = self.curr_balance + self.num_stock*next_price
-        reward = new_portfolio_value - self.portfolio_value
-        self.portfolio_value = new_portfolio_value
-
-        self._get_obs()
-        info = {
-            'portfolio_value': self.portfolio_value,
-            'balance': self.curr_balance,
-            'num_stock': self.num_stock
-        }
-        return self.obs_dict, reward, terminated, truncated, info
-
-    def reset(self, seed=42, options=None):
+    def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
         self.timestep = 0
         self.curr_balance = self.np_random.uniform(low=self.min_balance,
                                                    high=self.max_balance)
-        self.num_stock = 0
+        self.init_balance = self.curr_balance
+        self.num_stocks = np.zeros(self.num_ticker, dtype=int)
 
         self._get_obs()
         self.portfolio_value = self.curr_balance
 
         # todo: add curriculum or RSI #
+        # random for curr balance and even random num stock
 
-        return self.obs_dict, {'portfolio_value': self.portfolio_value}
+        return self.obs_dict, { 'portfolio_value': self.portfolio_value,
+                                'balance': self.curr_balance,
+                                'num_stock': self.num_stocks }
+
+
+
+
+    def step(self, action):
+        terminated = False
+
+        # [Time step, Ticker index]
+        last_prices = self.d_close[self.timestep]
+
+        assert len(action) == self.num_ticker, "Ticker num difference!"
+        n_trades = np.round(action).astype(int)
+
+        curr_balance = self.curr_balance
+        max_buys = (curr_balance // last_prices).astype(int)
+        max_sells = self.num_stocks
+        # normalize된 값 조심
+
+        print(f"Timestep: {self.timestep}")
+        print(f"Balance prev\t: {self.curr_balance}")
+        print(f"Last prices\t: {last_prices}")
+
+        for stock_idx in range(self.num_ticker):
+            print(f"For Stock idx: {stock_idx}")
+            n_trade_per_stock = n_trades[stock_idx]
+            max_buy_per_stock = max_buys[stock_idx]
+            max_sell_per_stock = max_sells[stock_idx]
+            last_price_per_stock = last_prices[stock_idx]
+
+            if n_trade_per_stock >0:
+                # buy
+                actual_buy = min(max_buy_per_stock, n_trade_per_stock)
+                self.curr_balance -= last_price_per_stock *actual_buy
+                self.num_stocks[stock_idx] += actual_buy
+                print(f"Buy\t\t: {actual_buy}")
+
+            elif n_trade_per_stock<0:
+                # sell
+                n_sell = -n_trade_per_stock
+                actual_sell = min(max_sell_per_stock, n_sell)
+                self.curr_balance += last_price_per_stock*actual_sell
+                self.num_stocks[stock_idx] -= actual_sell
+                print(f"Sell\t\t: {actual_sell}")
+
+            else:
+                # Do nothing
+                pass
+        print(f"Balance after\t: {self.curr_balance}")
+
+
+        last_day_idx = self.max_timestep -1
+        truncated = (self.timestep >= last_day_idx -1)  # tmw is last day
+        terminated = (self.curr_balance < self.init_balance * self.bankrupt_coef)
+
+        reward = self.compute_reward()
+
+        if terminated:
+            reward = self.termination_reward
+            self.reset()
+        elif truncated:
+            self.reset()
+        else:
+            self.timestep += 1
+            self._get_obs()
+
+        info = {
+            'portfolio_value': self.portfolio_value,
+            'balance': self.curr_balance,
+            'num_stocks': self.num_stocks
+        }
+
+        return self.obs_dict, reward, truncated, terminated, info
+
+
 
     def _get_obs(self):
-        market_obs = np.array([
-            self.d_close[self.timestep],
-            self.d_high[self.timestep],
-            self.d_low[self.timestep],
-            self.d_open[self.timestep],
-            self.d_volume[self.timestep]
-        ], dtype=np.float32)
-
         agent_obs = np.array([
             self.curr_balance,
-            self.num_stock
+            self.num_stocks
+        ], dtype=np.float32)
+
+        market_obs = np.array([
+            self.d_close[self.timestep, :],
+            self.d_high[self.timestep, :],
+            self.d_low[self.timestep, :],
+            self.d_open[self.timestep, :],
+            self.d_volume[self.timestep, :]
         ], dtype=np.float32)
 
         self.obs_dict = {"agent": agent_obs,
                          "market": market_obs}
+
+        return self.obs_dict
+
+    def compute_reward(self):
+        next_prices = self.d_close[self.timestep+1]
+        new_portfolio_value = self.curr_balance + np.sum(self.num_stocks *next_prices)
+        reward = (new_portfolio_value - self.portfolio_value)
+        self.portfolio_value = new_portfolio_value
+        return reward
