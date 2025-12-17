@@ -1,129 +1,103 @@
+# tester.py
+
 import yfinance as yf
 import gymnasium as gym
-import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from datetime import datetime
+import pickle
+from matplotlib.lines import Line2D
 
-# 기존에 작성했던 모듈들 import
 from Environment import StockTradingEnv
-from algo.ppo import Actor # Actor 클래스 정의가 필요합니다
+from algo.ppo import Actor
 
-# ==========================================
-# [설정] 테스트 파라미터
-# ==========================================
-MODEL_PATH = "saved_models/StockTrading_PPO_20251217-023317/actor_epoch_590.pth" # <- 실제 저장된 경로로 수정 필수!
-TICKER = ["AAPL"] # 학습 때와 동일한 종목
-START_DATE = "2024-01-01"
-END_DATE = "2025-01-01" # 현재 시점 (Context 기준)
+MODEL_NAME = "StockTrading_PPO_20251217-030648"
+EPOCH = "1000"
 
-# 환경 파라미터 (학습 때와 동일하게)
+MODEL_PATH = f"saved_models/{MODEL_NAME}/actor_epoch_{EPOCH}.pth"
+STATS_PATH = f"saved_models/{MODEL_NAME}/obs_rms_epoch_{EPOCH}.pkl"
+
+Tickers_candidate = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"]
+START_DATE = "2023-01-01"
+END_DATE = "2024-01-01"
+N_tickers = 1
+
+
 BANKRUPT_COEF = 0.3
-TERMINATION_REWARD = -1e4
+TERMINATION_REWARD = -1.0
 MAX_BALANCE = 1e7
+BALANCE_RAND = False
+device = 'cuda'
+MAX_TRADE = 50
 # ==========================================
 
 def shape_data_matrix(tickers, start, end):
-    print(f"📥 {tickers} 데이터 다운로드 중 ({start} ~ {end})...")
-    # auto_adjust=True는 종가(Close)가 수정주가로 반영됨
     df = yf.download(tickers, start=start, end=end, auto_adjust=True)
+    df_stacked = df.stack(level=1, future_stack=True)
+    df_stacked = df_stacked.sort_index(level=[0, 1])
 
-    # [중요] 단일 종목일 경우 MultiIndex가 아닐 수 있음 -> 강제 변환 필요 가능성 확인
-    # yfinance 버전에 따라 다르지만, 보통 단일 종목은 stack이 필요 없음
-    if len(tickers) == 1:
-        # 단일 종목: (Days, Features) -> (Days, 1, Features)로 변환
-        raw_data = df.values
-        # Feature 순서 파악 (나중에 Close 가격 찾기 위해)
-        feature_columns = list(df.columns)
+    raw_data = df_stacked.values
+    n_days = len(df.index)
+    n_features = raw_data.shape[1]
 
-        n_days = raw_data.shape[0]
-        n_features = raw_data.shape[1]
+    # [Time step, ticker_index, feature_index]
+    # features: Close, High, Low, Open, Volume
+    data_matrix = raw_data.reshape(n_days, N_tickers, n_features)   # shape: 250*1*5
+    print(f"Data matrix shape: {data_matrix.shape}")
+    return data_matrix
 
-        # (Days, 1, Features) 형태로 Reshape
-        data_matrix = raw_data.reshape(n_days, 1, n_features)
-
-    else:
-        # 다중 종목: 기존 로직 유지
-        # columns가 (Ticker, Feature) 형태인지 확인 필요
-        df_stacked = df.stack(level=1, future_stack=True)
-        df_stacked = df_stacked.sort_index(level=[0, 1])
-        raw_data = df_stacked.values
-        feature_columns = list(df_stacked.columns) # 정확하지 않을 수 있음 (구조에 따라 다름)
-
-        n_days = len(df.index)
-        n_features = raw_data.shape[1]
-        data_matrix = raw_data.reshape(n_days, len(tickers), n_features)
-
-    print(f"✅ 데이터 준비 완료. Shape: {data_matrix.shape}")
-
-    # 'Close' 컬럼이 몇 번째 인덱스인지 찾기
-    close_index = 0
-    # 보통 yfinance 컬럼은 알파벳 순: Close, High, Low, Open, Volume
-    # auto_adjust=True면 Adj Close는 없음.
-    # 대소문자 구분 없이 'Close'가 포함된 컬럼 찾기
-    for i, col in enumerate(df.columns):
-        if "Close" in str(col):
-            close_index = i
-            break
-
-    print(f"ℹ️ Close Price Index: {close_index} (Column: {df.columns[close_index]})")
-
-    return data_matrix, df.index, close_index
-
-def make_env_for_test(data_matrix):
-    """
-    학습 때와 '똑같은' 전처리 과정을 거치는 환경 생성
-    """
+def make_env_for_test(data_matrix, balance_rand, bankrupt_coef, termination_reward, max_balance, max_trade, stats_path):
     env = StockTradingEnv(df_matrix=data_matrix,
-                          bankrupt_coef=BANKRUPT_COEF,
-                          termination_reward=TERMINATION_REWARD,
-                          max_balance=MAX_BALANCE)
-
-    # Wrapper도 학습 때와 동일하게 씌워줘야 신경망이 입력을 이해함
+                          balance_rand=balance_rand,
+                          bankrupt_coef=bankrupt_coef,
+                          termination_reward=termination_reward,
+                          max_trade=max_trade,
+                          max_balance=max_balance)
     env = gym.wrappers.RecordEpisodeStatistics(env)
     env = gym.wrappers.FlattenObservation(env)
-    env = gym.wrappers.NormalizeObservation(env) # 주의: 테스트 시에는 통계치가 초기화된 상태로 시작함
-    env = gym.wrappers.NormalizeReward(env)      # 테스트 시 보상 정규화는 결과 확인용으로만 동작
+    env = gym.wrappers.NormalizeObservation(env)
+
+    with open(stats_path, "rb") as f:
+        loaded_obs_rms = pickle.load(f)
+    env.obs_rms = loaded_obs_rms
+    print(f"Loaded observation statistics from {stats_path}")
+    env.training = False
+
+    env = gym.wrappers.NormalizeReward(env)
     env = gym.wrappers.ClipAction(env)
-
     return env
+
+
 def test():
-    # 1. 디바이스 설정
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"🖥️ Using device: {device}")
-
-    # 2. 데이터 준비 (close_index 받아오기 추가)
-    data_matrix, dates, close_idx = shape_data_matrix(TICKER, START_DATE, END_DATE)
-
-    # 3. 환경 생성
-    env = make_env_for_test(data_matrix)
+    data_matrix = shape_data_matrix(Tickers_candidate[0:N_tickers], START_DATE, END_DATE)
+    env = make_env_for_test(data_matrix=data_matrix,
+                            balance_rand=BALANCE_RAND,
+                            bankrupt_coef=BANKRUPT_COEF,
+                            termination_reward=TERMINATION_REWARD,
+                            max_balance=MAX_BALANCE,
+                            max_trade=MAX_TRADE,
+                            stats_path=STATS_PATH)
     obs_shape = env.observation_space.shape[0]
     action_shape = env.action_space.shape[0]
 
-    # 4. 모델 로드
-    print(f"📂 모델 로딩 중: {MODEL_PATH}")
     actor = Actor(obs_dim=obs_shape, action_dim=action_shape).to(device)
-
-    try:
-        actor.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-        print("✅ 모델 가중치 로드 성공!")
-    except FileNotFoundError:
-        print("❌ 모델 파일을 찾을 수 없습니다. MODEL_PATH를 확인해주세요.")
-        return
-
-    # 5. 평가 모드
+    actor.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    print(f"Loaded pre-trained model from \n{MODEL_PATH}")
     actor.eval()
 
-    # 6. 테스트 루프
+    raw_env = env.unwrapped
     obs, info = env.reset()
     done = False
 
-    portfolio_values = []
+    current_balances = [raw_env.curr_balance]
     rewards = []
-    stock_prices = []
-    actions_history = []
+    policy_actions = []
+    stock_prices_obs = []
 
-    print("🚀 백테스팅 시작...")
+    assert N_tickers == 1, "need to implement code for multi-ticker"
+    stock_prices_gt = data_matrix[:,0,0]
+
+
+    print("Start Testing ...")
 
     while not done:
         with torch.no_grad():
@@ -131,87 +105,83 @@ def test():
             action_tensor = actor(obs_tensor)
             action = action_tensor.cpu().numpy()
 
-        obs, reward, terminated, truncated, info = env.step(action)
+        current_price = raw_env.obs_dict['market'][0]
+        stock_prices_obs.append(current_price)
+        policy_actions.append(action[0] *MAX_TRADE)
+
+        next_obs, reward, truncated, terminated, info = env.step(action)
+
+        current_balances.append(raw_env.curr_balance)
+        rewards.append(raw_env.reward)
+
+        obs = next_obs
         done = terminated or truncated
 
-        # --- [수정된 부분] 데이터 수집 로직 ---
-        raw_env = env.unwrapped
+    current_balances = current_balances[:-1]
+    print("Done Testing.")
+    print(f"Prices: {len(stock_prices_obs)}, Actions: {len(policy_actions)}")
+    print(f"Rewards: {len(rewards)}, Balances: {len(current_balances)}")
 
-        # (1) 자산 가치
-        if hasattr(raw_env, 'portfolio_value'):
-            portfolio_values.append(raw_env.portfolio_value[0] if isinstance(raw_env.portfolio_value, list) else raw_env.portfolio_value)
-        else:
-            # 기본 자산 계산 (Environment 구현에 따라 다를 수 있음)
-            # raw_env.state[0]이 잔고(balance)라고 가정하는 경우가 많음
-            portfolio_values.append(MAX_BALANCE)
 
-            # (2) 주가 (정확한 인덱싱)
-        try:
-            current_step = raw_env.timestep
-            # raw_env.data shape: [Days, Tickers, Features]
-            # 우리가 필요한 것: [Current Day, 0번째 Ticker, Close Feature]
-            if current_step < len(raw_env.data):
-                # [수정] 피쳐 벡터 전체([0])가 아니라, 그 안의 close_idx를 가져옴
-                price = raw_env.data[current_step][0][close_idx]
-                stock_prices.append(float(price))
-            else:
-                stock_prices.append(stock_prices[-1])
-        except Exception as e:
-            # 디버깅을 위해 에러 출력
-            if len(stock_prices) == 0: print(f"Price Error: {e}")
-            stock_prices.append(0)
+    fig, axes = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
 
-        rewards.append(reward)
-        actions_history.append(action[0])
+    steps = range(len(current_balances))
 
-    print("🏁 백테스팅 종료.")
+    # ---------------------------------------------------------
+    # 1. Portfolio Balance
+    # ---------------------------------------------------------
+    ax1 = axes[0]
+    total_return = (current_balances[-1] - current_balances[0]) / current_balances[0] * 100
+    ax1.set_title(f"1. Portfolio Balance (Total Return: {total_return:.2f}%)", fontweight='bold')
+    ax1.plot(steps, current_balances, color='tab:red', linewidth=2)
+    ax1.set_ylabel('Balance (Won)')
+    ax1.grid(True, alpha=0.3)
 
-    # (이하 시각화 코드는 동일)
-    # ...
-    if len(portfolio_values) > 0:
-        initial_value = MAX_BALANCE
-        final_value = portfolio_values[-1]
-        profit_pct = ((final_value - initial_value) / initial_value) * 100
+    # ---------------------------------------------------------
+    # 2. Reward
+    # ---------------------------------------------------------
+    ax2 = axes[1]
+    ax2.set_title("2. Step Reward", fontweight='bold')
+    # 보상은 막대보다는 fill_between이나 plot으로 추이를 보는게 좋습니다.
+    ax2.fill_between(steps, rewards, color='gray', alpha=0.5)
+    ax2.plot(steps, rewards, color='black', linewidth=0.5, alpha=0.3)
+    ax2.set_ylabel('Reward')
+    ax2.grid(True, alpha=0.3)
 
-        print(f"💰 초기 자산: {initial_value:,.0f}")
-        print(f"💰 최종 자산: {final_value:,.0f}")
-        print(f"📈 수익률: {profit_pct:.2f}%")
+    # ---------------------------------------------------------
+    # 3. Stock Prices
+    # ---------------------------------------------------------
+    ax3 = axes[2]
+    ax3.set_title("3. Stock Prices (Ground Truth vs Observed)", fontweight='bold')
 
-        plt.figure(figsize=(15, 12))
+    sliced_gt = stock_prices_gt[:len(steps)]
+    ax3.plot(steps, sliced_gt, color='black', linestyle='--', label='Ground Truth')
+    ax3.plot(steps, stock_prices_obs, color='tab:blue', label='Observed')
+    ax3.set_ylabel('Price')
+    ax3.legend(loc='upper left')
+    ax3.grid(True, alpha=0.3)
 
-        plt.subplot(4, 1, 1)
-        plt.plot(portfolio_values, label='My Portfolio Value', color='red', linewidth=2)
-        plt.axhline(y=initial_value, color='gray', linestyle='--', label='Initial Balance')
-        plt.title(f'1. Portfolio Performance (Profit: {profit_pct:.2f}%)')
-        plt.ylabel('Value (Won/Dollar)')
-        plt.legend()
-        plt.grid(True)
+    # ---------------------------------------------------------
+    # 4. Policy Actions
+    # ---------------------------------------------------------
+    ax4 = axes[3]
+    ax4.set_title("4. Agent Actions (Buy/Sell Volume)", fontweight='bold')
 
-        plt.subplot(4, 1, 2)
-        plt.plot(stock_prices, label=f'{TICKER[0]} Price', color='blue')
-        plt.title(f'2. Stock Price Movement ({TICKER[0]})')
-        plt.ylabel('Price')
-        plt.legend()
-        plt.grid(True)
+    action_colors = ['green' if x >= 0 else 'red' for x in policy_actions]
 
-        plt.subplot(4, 1, 3)
-        plt.plot(rewards, label='Step Reward', color='purple', alpha=0.7)
-        plt.title('3. Rewards per Step')
-        plt.ylabel('Reward')
-        plt.legend()
-        plt.grid(True)
+    ax4.bar(steps, policy_actions, color=action_colors, width=1.0)
+    ax4.axhline(0, color='black', linewidth=0.8) # 0 기준선
+    ax4.set_ylabel('Volume')
+    ax4.set_xlabel('Steps')
+    ax4.grid(True, alpha=0.3)
 
-        plt.subplot(4, 1, 4)
-        plt.bar(range(len(actions_history)), actions_history, color='green', label='Action (Buy/Sell)', width=1.0)
-        plt.title('4. Agent Actions')
-        plt.ylabel('Strength')
-        plt.legend()
-        plt.grid(True)
+    legend_elements = [Line2D([0], [0], color='green', lw=4, label='Buy'),
+                       Line2D([0], [0], color='red', lw=4, label='Sell')]
+    ax4.legend(handles=legend_elements, loc='upper left')
 
-        plt.tight_layout()
-        plt.show()
-    else:
-        print("⚠️ 데이터가 기록되지 않았습니다.")
+    plt.tight_layout()
+    plt.show()
+
 
 if __name__ == "__main__":
     test()

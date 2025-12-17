@@ -1,3 +1,5 @@
+# Environment.py
+
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -6,6 +8,9 @@ import numpy as np
 class StockTradingEnv(gym.Env):
     def __init__(self,
                  df_matrix,
+                 balance_rand,
+                 max_trade,
+                 balance_unit=500*1e4,
                  bankrupt_coef=0.3,
                  termination_reward=-1e4,
                  max_balance=1e7):
@@ -16,8 +21,12 @@ class StockTradingEnv(gym.Env):
         # assert self.num_ticker == 1, "For now, only for single ticker"
         self.bankrupt_coef = bankrupt_coef
         self.termination_reward = termination_reward
+        self.balance_rand = balance_rand
+        self.balance_unit = balance_unit
+        self.max_trade = max_trade
 
         self.timestep = 0
+        self.reward = 0
 
         # df_matrix
         # [Time step, ticker_index, feature_index]
@@ -28,7 +37,7 @@ class StockTradingEnv(gym.Env):
         self.d_open = df_matrix[:,:,3]
         self.d_volume = df_matrix[:,:,4]
 
-        self.min_balance = np.min(self.d_close)
+        self.min_balance = np.ceil(np.min(self.d_close)/self.balance_unit) *self.balance_unit
         self.max_balance = max_balance
         # todo: multi ticker system
 
@@ -65,9 +74,13 @@ class StockTradingEnv(gym.Env):
             })
 
         self.action_dim = self.num_ticker
+
+        action_min = np.full((self.action_dim,), (-1)*self.max_trade, dtype=np.float32)
+        action_max = np.full((self.action_dim,), self.max_trade, dtype=np.float32)
+
         self.action_space = spaces.Box(
-            low=(-1)*np.inf,
-            high=np.inf,
+            low=action_min,
+            high=action_max,
             shape=(self.action_dim,),
             dtype=np.float32
         )
@@ -86,8 +99,17 @@ class StockTradingEnv(gym.Env):
         super().reset(seed=seed)
 
         self.timestep = 0
-        self.curr_balance = self.np_random.uniform(low=self.min_balance,
-                                                   high=self.max_balance)
+        self.reward = 0
+        if self.balance_rand:
+            # self.curr_balance = self.np_random.uniform(low=self.min_balance,
+            #                                            high=self.max_balance)
+
+            num_steps = int((self.max_balance - self.min_balance) / self.balance_unit)
+            random_step = self.np_random.integers(0, num_steps + 1)
+            self.curr_balance = self.min_balance + (random_step * self.balance_unit)
+        else:
+            self.curr_balance = self.max_balance
+
         self.init_balance = self.curr_balance
         self.num_stocks = np.zeros(self.num_ticker, dtype=int)
 
@@ -154,11 +176,11 @@ class StockTradingEnv(gym.Env):
         truncated = (self.timestep >= last_day_idx -1)  # tmw is last day
         terminated = (self.curr_balance < self.init_balance * self.bankrupt_coef)
 
-        reward = self.compute_reward()
-        print(f"Reward\t: {reward}")
+        self.reward = self.compute_reward()
+        print(f"Reward\t: {self.reward}")
 
         if terminated:
-            reward = self.termination_reward
+            self.reward = self.termination_reward
             self.reset()
         elif truncated:
             self.reset()
@@ -172,7 +194,7 @@ class StockTradingEnv(gym.Env):
             'num_stocks': self.num_stocks
         }
 
-        return self.obs_dict, reward, truncated, terminated, info
+        return self.obs_dict, self.reward, truncated, terminated, info
 
 
 

@@ -1,3 +1,5 @@
+# ppo.py
+
 import torch
 import torch.optim as optim
 import torch.nn as nn
@@ -57,7 +59,7 @@ class PPO:
 
                 new_value_batch = self.critic.evaluate(obs_batch)
                 value_clipped = value_batch + (new_value_batch - value_batch).clamp(-self.clip_param, self.clip_param)
-                value_loss_unclipped = (value_batch - return_batch).pow(2)
+                value_loss_unclipped = (new_value_batch - return_batch).pow(2)
                 value_loss_clipped =(value_clipped - return_batch).pow(2)
                 value_loss =torch.max(value_loss_clipped, value_loss_unclipped).mean()
 
@@ -90,7 +92,8 @@ class Actor(nn.Module):
             nn.ReLU(),
             init_layer(nn.Linear(hidden_dim, hidden_dim)),
             nn.ReLU(),
-            init_layer(nn.Linear(hidden_dim, action_dim), std=0.01)
+            init_layer(nn.Linear(hidden_dim, action_dim), std=0.01),
+            nn.Tanh()
         )
 
         self.log_std = nn.Parameter(torch.zeros(action_dim))
@@ -123,7 +126,6 @@ class Critic(nn.Module):
     def __init__(self, obs_dim, hidden_dim=64):
         super(Critic, self).__init__()
 
-        # Value Network (상태 -> 가치 V(s))
         self.net = nn.Sequential(
             init_layer(nn.Linear(obs_dim, hidden_dim)),
             nn.ReLU(),
@@ -225,60 +227,3 @@ class Storage:
                 value_batch = value_batch.unsqueeze(-1)
 
             yield obs_batch, action_batch, action_log_prob_batch, advantage_batch, value_batch, return_batch
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#
-#
-#
-# class Actor:
-#     def __init__(self, architecture, distribution):
-#         super(Actor, self).__init__()
-#         self.architecture = architecture
-#         self.distribution = distribution
-#
-#         self.action_mean = None
-#
-#     def sample(self, obs):
-#         self.action_mean = self.architecture.architecture(obs)
-#         action, action_log_prob = self.distribution.sample(self.action_mean)
-#         return action, action_log_prob
-#
-#     def evaluate(self, obs, action):
-#         self.action_mean = self.architecture.architecture(obs)
-#         action_log_prob, entropy = self.distribution.evaluate(self.action_mean, action)
-#         return action_log_prob, entropy
-#
-#     def update(self):
-#         self.distribution.update()
-#
-# class Critic:
-#     def __init__(self):
-#
-#     def predict(self, obs):
-#         return value
-#
-#     def evaluate(self, obs):
-#         return value
