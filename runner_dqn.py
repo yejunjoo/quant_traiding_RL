@@ -22,7 +22,7 @@ from algo.dqn import DQN
 N_tickers = 1
 Start_date = "2023-01-01"
 End_date = "2024-01-01"
-Tickers_candidate = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"]
+Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
 
 # Learning
 MAX_EPOCH = int(1e8) # 백만
@@ -36,7 +36,7 @@ Max_balance = 1e4
 Balance_rand = False    # if False, set to max balance
 Max_trade = 50
 
-run_name = f"DQN_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+run_name = f"StockTrading_DQN_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 log_dir = f"runs/{run_name}"
 save_dir = f"saved_models/{run_name}"
 

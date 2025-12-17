@@ -107,7 +107,11 @@ class Actor(nn.Module):
             obs = torch.tensor(obs, dtype=torch.float32)
 
         mu = self.forward(obs)
-        std = torch.exp(self.log_std)
+
+        clamped_log_std = torch.clamp(self.log_std, min=-20, max=2)
+        std = torch.exp(clamped_log_std)
+        # std = torch.exp(self.log_std)
+
         dist = Normal(mu, std)
         action = dist.sample()
         log_prob = dist.log_prob(action).sum(dim=-1, keepdim=True)
@@ -115,7 +119,12 @@ class Actor(nn.Module):
 
     def evaluate(self, obs, action):
         mu = self.forward(obs)
-        std = torch.exp(self.log_std)
+
+
+        clamped_log_std = torch.clamp(self.log_std, min=-20, max=2)
+        std = torch.exp(clamped_log_std)
+        # std = torch.exp(self.log_std)
+
         dist = Normal(mu, std)
         action_log_prob = dist.log_prob(action).sum(dim=-1, keepdim=True)
         entropy = dist.entropy().sum(dim=-1, keepdim=True)
@@ -154,7 +163,7 @@ class Storage:
         self.step = 0
         self.obss = np.zeros([num_transition, obs_shape], dtype=np.float32)
         self.actions = np.zeros([num_transition, action_shape], dtype=np.float32)
-        self.action_log_probs = np.zeros([num_transition], dtype=np.float32)
+        self.action_log_probs = np.zeros([num_transition, 1], dtype=np.float32)
         self.rewards = np.zeros([num_transition], dtype=np.float32)
         self.truncateds = np.zeros([num_transition], dtype=np.bool)  # 0: False
         self.terminateds = np.zeros([num_transition], dtype=np.bool) # 0: False
@@ -166,7 +175,7 @@ class Storage:
 
     def add_transitions(self, obs, action, action_log_prob, reward, truncated, terminated):
         self.obss[self.step] = obs
-        self.actions[self.step] = action.detach().cpu().numpy()
+        self.actions[self.step] = action.detach().cpu().numpy().flatten()
         self.action_log_probs[self.step] = action_log_prob.detach().cpu().numpy()
         self.rewards[self.step] = reward
         self.truncateds[self.step] = truncated

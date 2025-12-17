@@ -13,7 +13,7 @@ class StockTradingEnv(gym.Env):
                  balance_unit=500*1e4,
                  bankrupt_coef=0.3,
                  termination_reward=-1e4,
-                 max_balance=1e7):
+                 max_balance=1e4):
         super().__init__()
 
 
@@ -57,6 +57,7 @@ class StockTradingEnv(gym.Env):
 
         self.obs_dim = self.agent_obs_dim + self.market_obs_dim
 
+        # [Time step, ticker_index, feature_index]
         self.observation_space = spaces.Dict(
             {
                 "agent": spaces.Box(
@@ -127,32 +128,26 @@ class StockTradingEnv(gym.Env):
 
 
     def step(self, action):
-        terminated = False
-
         # [Time step, Ticker index]
         last_prices = self.d_close[self.timestep]
 
         assert len(action) == self.num_ticker, "Ticker num difference!"
         n_trades = np.round(action).astype(int)
 
-        curr_balance = self.curr_balance
-        max_buys = (curr_balance // last_prices).astype(int)
-        max_sells = self.num_stocks
-
         print(f"\nTimestep: {self.timestep}")
         print(f"Balance prev\t: {self.curr_balance//10000}")
         print(f"Last prices\t: {last_prices}")
 
         for stock_idx in range(self.num_ticker):
-            print(f"For Stock idx: {stock_idx}")
             n_trade_per_stock = n_trades[stock_idx]
-            max_buy_per_stock = max_buys[stock_idx]
-            max_sell_per_stock = max_sells[stock_idx]
             last_price_per_stock = last_prices[stock_idx]
+            max_buy = (self.curr_balance // last_price_per_stock).astype(int)
+            max_sell = self.num_stocks[stock_idx]
 
+            print(f"For Stock idx: {stock_idx}")
             if n_trade_per_stock >0:
                 # buy
-                actual_buy = min(max_buy_per_stock, n_trade_per_stock)
+                actual_buy = min(max_buy, n_trade_per_stock)
                 self.curr_balance -= last_price_per_stock *actual_buy
                 self.num_stocks[stock_idx] += actual_buy
                 # print(f"Buy\t\t: {actual_buy}")
@@ -160,7 +155,7 @@ class StockTradingEnv(gym.Env):
             elif n_trade_per_stock<0:
                 # sell
                 n_sell = -n_trade_per_stock
-                actual_sell = min(max_sell_per_stock, n_sell)
+                actual_sell = min(max_sell, n_sell)
                 self.curr_balance += last_price_per_stock*actual_sell
                 self.num_stocks[stock_idx] -= actual_sell
                 # print(f"Sell\t\t: {actual_sell}")
@@ -200,13 +195,14 @@ class StockTradingEnv(gym.Env):
             self.num_stocks.flatten()
         ]).astype(np.float32)
 
+        # [Time step, ticker_index, feature_index]
         market_obs = np.array([
             self.d_close[self.timestep, :],
             self.d_high[self.timestep, :],
             self.d_low[self.timestep, :],
             self.d_open[self.timestep, :],
             self.d_volume[self.timestep, :]
-        ], dtype=np.float32)
+        ], dtype=np.float32).T.flatten()
 
         self.obs_dict = {"agent": agent_obs,
                          "market": market_obs}

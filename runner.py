@@ -20,10 +20,11 @@ from algo.ppo import PPO, Actor, Critic
 ## todo: Add yaml file reading for hyperparameters ##
 
 # Data
-N_tickers = 1
+N_tickers = 3
 Start_date = "2023-01-01"
 End_date = "2024-01-01"
-Tickers_candidate = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"]
+Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
+# 학습 시에는 항상 앞에서부터 종목 사용
 
 # Learning
 MAX_EPOCH = int(1e8) # 백만
@@ -31,13 +32,13 @@ Rollout_storage = 10240 # 10240    # min 64
 SAVE_EVERY_EPOCH = 100 # 500
 
 # Env
-Bankrupt_coef = 0.3
-Termination_reward = -1.0
-Max_balance = 1e4
+Bankrupt_coef = 0.0
+Termination_reward = -0.5
+Max_balance = 1e4 *N_tickers
 Balance_rand = False    # if False, set to max balance
 Max_trade = 50
 
-run_name = f"PPO_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+run_name = f"StockTrading_PPO_{datetime.now().strftime('%Y%m%d-%H%M%S')}_{N_tickers}"
 log_dir = f"runs/{run_name}"
 save_dir = f"saved_models/{run_name}"
 
@@ -108,7 +109,7 @@ global_step = 0
 tensorboard_launcher("runs")
 
 best_episodic_return = -float('inf')
-epi_return = []
+epi_return = -float('inf')
 
 for epoch in range(MAX_EPOCH):
     print(f"\n\n\t/// ------- EPOCH {epoch}  ------- ///")
@@ -116,7 +117,7 @@ for epoch in range(MAX_EPOCH):
         global_step += 1
         curr_obs = new_obs
         action = ppo.act(curr_obs)
-        new_obs, reward, truncated, terminated, info = env.step(action)
+        new_obs, reward, truncated, terminated, info = env.step(action.flatten())
         if "episode" in info:
             epi_return = info['episode']['r']
             epi_length = info['episode']['l']

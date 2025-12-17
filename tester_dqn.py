@@ -16,7 +16,7 @@ STEP = "1220000"
 MODEL_PATH = f"saved_models/{MODEL_NAME}/dqn_step_{STEP}.pth"
 STATS_PATH = f"saved_models/{MODEL_NAME}/obs_rms_step_{STEP}.pkl"
 
-Tickers_candidate = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"]
+Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
 START_DATE = "2023-01-01"
 END_DATE = "2024-01-01"
 N_tickers = 1
