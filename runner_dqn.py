@@ -24,7 +24,7 @@ End_date = "2024-01-01"
 # Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
 
 # 항상 위에 주어진 순서대로 줘야함.
-Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL']
+Tickers_candidate = ['AAPL']
 N_tickers = len(Tickers_candidate)
 
 # Learning

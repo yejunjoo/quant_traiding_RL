@@ -10,16 +10,15 @@ import numpy as np
 
 from Environment import StockTradingEnv
 from algo.ppo import Actor
-from runner import N_tickers
 
-MODEL_NAME = "StockTrading_PPO_20251218-010409_3"
-EPOCH = "200"
+MODEL_NAME = "20251218-035000_PPO_1"
+EPOCH = "10"
 
 # 다른 종목 테스트하려면, N_tickers로 주지말고, 직접 ticker 리스트를 정해서 주기
 # Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
 
 # 리스트 줄 때 항상 순서 맞춰서 주기
-Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL']
+Tickers_candidate = ['AAPL']
 N_tickers = len(Tickers_candidate)
 
 MODEL_PATH = f"saved_models/{MODEL_NAME}/actor_epoch_{EPOCH}.pth"

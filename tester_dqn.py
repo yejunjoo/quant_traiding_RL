@@ -10,12 +10,12 @@ import os
 from Environment import StockTradingEnv
 from algo.dqn import DQN
 
-MODEL_NAME = "20251218-033531_DQN_3"
-STEP = "38000"
+MODEL_NAME = "20251218-033924_DQN_1"
+STEP = "10000"
 
 # Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
 # 항상 위에 있는 순서대로 줘야함
-Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL']
+Tickers_candidate = ['AAPL']
 N_tickers = len(Tickers_candidate)
 
 MODEL_PATH = f"saved_models/{MODEL_NAME}/dqn_step_{STEP}.pth"

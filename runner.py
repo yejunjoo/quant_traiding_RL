@@ -24,14 +24,14 @@ Start_date = "2023-01-01"
 End_date = "2024-01-01"
 
 # Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA'] # Alphabetic Order
-Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL']
+Tickers_candidate = ['AAPL']
 N_tickers = len(Tickers_candidate)
 # 학습 시에는 항상 앞에서부터 종목 사용
 
 # Learning
 MAX_EPOCH = int(1e8) # 백만
-Rollout_storage = 10240 # 10240    # min 64
-SAVE_EVERY_EPOCH = 100 # 500
+Rollout_storage = 1024 # 10240    # min 64
+SAVE_EVERY_EPOCH = 1 # 500
 
 # Env
 Bankrupt_coef = 0.0
