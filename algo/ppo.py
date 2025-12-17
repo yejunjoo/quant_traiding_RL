@@ -21,7 +21,7 @@ class PPO:
         self.num_mini_batches = 64
         self.clip_param = 0.2
         self.value_loss_coef = 0.5
-        self.entropy_coef = 0.01     # why zero?
+        self.entropy_coef = 0.01
         self.max_grad_norm = 0.5
         self.gamma = 0.998
         self.lamda = 0.95
@@ -107,7 +107,7 @@ class Actor(nn.Module):
             obs = torch.tensor(obs, dtype=torch.float32)
 
         mu = self.forward(obs)
-        std = torch.exp(self.log_std) # log_std -> std 변환
+        std = torch.exp(self.log_std)
         dist = Normal(mu, std)
         action = dist.sample()
         log_prob = dist.log_prob(action).sum(dim=-1, keepdim=True)

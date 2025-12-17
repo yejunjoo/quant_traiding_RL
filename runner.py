@@ -46,23 +46,11 @@ os.makedirs(save_dir, exist_ok=True)
 # ==========================================
 
 def tensorboard_launcher(directory_path, port=6006):
-    """
-    TensorBoard를 백그라운드에서 실행하고 웹 브라우저를 엽니다.
-    """
-    # 1. 텐서보드 실행 명령 (백그라운드 프로세스 Popen 사용)
-    # 윈도우/리눅스 환경에 따라 tensorboard 실행 파일 경로 문제가 있을 수 있으므로
-    # 'python -m tensorboard' 방식으로 실행하는 것이 가장 안전합니다.
     cmd = ["python", "-m", "tensorboard", "--logdir", directory_path, "--port", str(port)]
-
-    print(f"🚀 TensorBoard launching on http://localhost:{port}")
+    print(f"TensorBoard launching on http://localhost:{port}")
     process = subprocess.Popen(cmd)
-
-    # 2. 서버가 시작될 때까지 잠시 대기 (3초)
     time.sleep(3)
-
-    # 3. 브라우저 자동 실행
     webbrowser.open(f"http://localhost:{port}/")
-
     return process
 
 def make_env(data_matrix, balance_rand, bankrupt_coef, termination_reward, max_balance, max_trade):
