@@ -36,7 +36,7 @@ Max_balance = 1e4
 Balance_rand = False    # if False, set to max balance
 Max_trade = 50
 
-run_name = f"StockTrading_PPO_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+run_name = f"DQN_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 log_dir = f"runs/{run_name}"
 save_dir = f"saved_models/{run_name}"
 
@@ -45,23 +45,11 @@ os.makedirs(save_dir, exist_ok=True)
 # ==========================================
 
 def tensorboard_launcher(directory_path, port=6006):
-    """
-    TensorBoard를 백그라운드에서 실행하고 웹 브라우저를 엽니다.
-    """
-    # 1. 텐서보드 실행 명령 (백그라운드 프로세스 Popen 사용)
-    # 윈도우/리눅스 환경에 따라 tensorboard 실행 파일 경로 문제가 있을 수 있으므로
-    # 'python -m tensorboard' 방식으로 실행하는 것이 가장 안전합니다.
     cmd = ["python", "-m", "tensorboard", "--logdir", directory_path, "--port", str(port)]
-
     print(f"🚀 TensorBoard launching on http://localhost:{port}")
     process = subprocess.Popen(cmd)
-
-    # 2. 서버가 시작될 때까지 잠시 대기 (3초)
     time.sleep(3)
-
-    # 3. 브라우저 자동 실행
     webbrowser.open(f"http://localhost:{port}/")
-
     return process
 
 def make_env(data_matrix, balance_rand, bankrupt_coef, termination_reward, max_balance, max_trade):
@@ -105,29 +93,21 @@ assert len(obs_shape) == 1
 assert len(action_shape) == 1
 
 
-# [DQN 생성]
 dqn_agent = DQN(obs_dim=obs_shape[0],
-                action_dim=1, # 실제론 내부에서 5개 discrete action으로 변환
+                action_dim=21, # 21 discretized actions; unit: 5 stocks
                 buffer_size=50000,
                 batch_size=64)
 
 new_obs, info = env.reset()
-global_step = 0
 tensorboard_launcher("runs")
 
-for epoch in range(MAX_EPOCH):
-    # DQN은 Epoch 개념보다는 Total Step 개념이 더 강하지만, 구조 유지를 위해 사용
+for global_step in range(MAX_EPOCH):
 
-    # 1. Action 선택 (DQN은 이산 인덱스와 연속 값을 동시에 반환하도록 설계함)
     curr_obs = new_obs
     action_continuous, action_idx = dqn_agent.act(curr_obs)
 
-    # 2. Environment Step
     new_obs, reward, truncated, terminated, info = env.step(action_continuous)
 
-    global_step += 1
-
-    # 3. 로깅
     if "episode" in info:
         epi_return = info['episode']['r']
         epi_length = info['episode']['l']
@@ -139,19 +119,15 @@ for epoch in range(MAX_EPOCH):
         writer.add_scalar("charts/episodic_return", epi_return, global_step)
         writer.add_scalar("charts/epsilon", dqn_agent.epsilon, global_step)
 
-    # 4. Buffer 저장 (Discrete Index를 저장해야 함!)
     dqn_agent.step(curr_obs, action_idx, reward, new_obs, truncated or terminated)
 
-    # 5. 학습 (매 스텝마다 혹은 일정 주기마다)
     loss = dqn_agent.update()
     writer.add_scalar("losses/q_loss", loss, global_step)
 
-    # 6. 리셋 처리
     if truncated or terminated:
         new_obs, _ = env.reset()
 
-    # 7. 모델 저장
-    if global_step % 10000 == 0: # 저장 주기는 스텝 단위로 변경 추천
+    if global_step % 10000 == 0:
         torch.save(dqn_agent.q_net.state_dict(), os.path.join(save_dir, f"dqn_step_{global_step}.pth"))
 
         obs_rms = env.get_wrapper_attr('obs_rms')

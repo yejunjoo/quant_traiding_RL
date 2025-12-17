@@ -37,7 +37,7 @@ Max_balance = 1e4
 Balance_rand = False    # if False, set to max balance
 Max_trade = 50
 
-run_name = f"StockTrading_PPO_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+run_name = f"PPO_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 log_dir = f"runs/{run_name}"
 save_dir = f"saved_models/{run_name}"
 

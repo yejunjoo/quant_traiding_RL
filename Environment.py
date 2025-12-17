@@ -138,7 +138,6 @@ class StockTradingEnv(gym.Env):
         curr_balance = self.curr_balance
         max_buys = (curr_balance // last_prices).astype(int)
         max_sells = self.num_stocks
-        # normalize된 값 조심
 
         print(f"\nTimestep: {self.timestep}")
         print(f"Balance prev\t: {self.curr_balance//10000}")

@@ -11,12 +11,12 @@ from Environment import StockTradingEnv
 from algo.ppo import Actor
 
 MODEL_NAME = "StockTrading_PPO_20251217-180918"
-EPOCH = "1100"
+EPOCH = "1300"
 
 MODEL_PATH = f"saved_models/{MODEL_NAME}/actor_epoch_{EPOCH}.pth"
 STATS_PATH = f"saved_models/{MODEL_NAME}/obs_rms_epoch_{EPOCH}.pkl"
 
-Tickers_candidate = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"]
+Tickers_candidate = ["MSFT", "AAPL", "GOOGL", "AMZN", "NVDA", "TSLA", "META"]
 START_DATE = "2023-01-01"
 END_DATE = "2024-01-01"
 N_tickers = 1
@@ -120,18 +120,16 @@ def test():
         done = terminated or truncated
 
     current_balances = current_balances[:-1]
+    # last value is blance that is reset
     print("Done Testing.")
     print(f"Prices: {len(stock_prices_obs)}, Actions: {len(policy_actions)}")
     print(f"Rewards: {len(rewards)}, Balances: {len(current_balances)}")
 
 
     fig, axes = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
-
     steps = range(len(current_balances))
 
-    # ---------------------------------------------------------
     # 1. Portfolio Balance
-    # ---------------------------------------------------------
     ax1 = axes[0]
     total_return = (current_balances[-1] - current_balances[0]) / current_balances[0] * 100
     ax1.set_title(f"1. Portfolio Balance (Total Return: {total_return:.2f}%)", fontweight='bold')
@@ -139,23 +137,17 @@ def test():
     ax1.set_ylabel('Balance (Won)')
     ax1.grid(True, alpha=0.3)
 
-    # ---------------------------------------------------------
     # 2. Reward
-    # ---------------------------------------------------------
     ax2 = axes[1]
     ax2.set_title("2. Step Reward", fontweight='bold')
-    # 보상은 막대보다는 fill_between이나 plot으로 추이를 보는게 좋습니다.
     ax2.fill_between(steps, rewards, color='gray', alpha=0.5)
     ax2.plot(steps, rewards, color='black', linewidth=0.5, alpha=0.3)
     ax2.set_ylabel('Reward')
     ax2.grid(True, alpha=0.3)
 
-    # ---------------------------------------------------------
     # 3. Stock Prices
-    # ---------------------------------------------------------
     ax3 = axes[2]
     ax3.set_title("3. Stock Prices (Ground Truth vs Observed)", fontweight='bold')
-
     sliced_gt = stock_prices_gt[:len(steps)]
     ax3.plot(steps, sliced_gt, color='black', linestyle='--', label='Ground Truth')
     ax3.plot(steps, stock_prices_obs, color='tab:blue', label='Observed')
@@ -163,14 +155,10 @@ def test():
     ax3.legend(loc='upper left')
     ax3.grid(True, alpha=0.3)
 
-    # ---------------------------------------------------------
     # 4. Policy Actions
-    # ---------------------------------------------------------
     ax4 = axes[3]
     ax4.set_title("4. Agent Actions (Buy/Sell Volume)", fontweight='bold')
-
     action_colors = ['green' if x >= 0 else 'red' for x in policy_actions]
-
     ax4.bar(steps, policy_actions, color=action_colors, width=1.0)
     ax4.axhline(0, color='black', linewidth=0.8) # 0 기준선
     ax4.set_ylabel('Volume')

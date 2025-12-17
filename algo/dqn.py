@@ -1,3 +1,5 @@
+# dqn.py
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -6,7 +8,7 @@ import random
 from collections import deque
 
 class QNetwork(nn.Module):
-    def __init__(self, obs_dim, n_actions, hidden_dim=128):
+    def __init__(self, obs_dim, n_actions, hidden_dim=64):
         super(QNetwork, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
@@ -34,13 +36,16 @@ class ReplayBuffer:
         return len(self.buffer)
 
 class DQN:
-    def __init__(self, obs_dim, action_dim=1, lr=1e-4, gamma=0.99, buffer_size=50000, batch_size=64):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+    def __init__(self, obs_dim, action_dim=21, lr=5e-4, gamma=0.99, buffer_size=50000, batch_size=64):
+        self.device = "cuda"
 
         # Action Definition (Discretization)
-        # 0: Strong Sell(-1.0), 1: Sell(-0.5), 2: Hold(0.0), 3: Buy(0.5), 4: Strong Buy(1.0)
-        self.action_map = {0: -1.0, 1: -0.5, 2: 0.0, 3: 0.5, 4: 1.0}
-        self.n_actions = len(self.action_map)
+        # -1: Strong Sell; sell 50
+        # -0.95 : sell 45
+        # unit: 5
+        self.n_actions = action_dim
+        self.action_values = np.linspace(-1.0, 1.0, self.n_actions)
+        self.action_map = {idx: self.action_values[idx] for idx in range(self.n_actions)}
 
         # Networks
         self.q_net = QNetwork(obs_dim, self.n_actions).to(self.device)
@@ -63,15 +68,16 @@ class DQN:
     def act(self, obs, eval_mode=False):
         # Epsilon-Greedy Strategy
         if not eval_mode and random.random() < self.epsilon:
+            # exploration
             action_idx = random.randint(0, self.n_actions - 1)
         else:
+            # exploitation
             if isinstance(obs, np.ndarray):
                 obs = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
             with torch.no_grad():
                 q_values = self.q_net(obs)
                 action_idx = q_values.argmax().item()
 
-        # Return continuous value for Environment, but index is needed for learning
         continuous_action = np.array([self.action_map[action_idx]], dtype=np.float32)
         return continuous_action, action_idx
 
@@ -112,6 +118,7 @@ class DQN:
 
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), max_norm=0.5)
         self.optimizer.step()
 
         return loss.item()
