@@ -19,24 +19,26 @@ from algo.dqn import DQN
 
 
 # Data
-N_tickers = 1
 Start_date = "2023-01-01"
 End_date = "2024-01-01"
-Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
+# Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
+
+# 항상 위에 주어진 순서대로 줘야함.
+Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL']
+N_tickers = len(Tickers_candidate)
 
 # Learning
-MAX_EPOCH = int(1e8) # 백만
-Rollout_storage = 10240 # 10240    # min 64
-SAVE_EVERY_EPOCH = 100 # 500
+MAX_STEP = int(1e8) # 백만
+SAVE_EVERY_STEP = 1000
 
 # Env
 Bankrupt_coef = 0.3
-Termination_reward = -1.0
-Max_balance = 1e4
+Termination_reward = -0.5
+Max_balance = 1e4*N_tickers
 Balance_rand = False    # if False, set to max balance
 Max_trade = 50
 
-run_name = f"StockTrading_DQN_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+run_name = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_DQN_{N_tickers}"
 log_dir = f"runs/{run_name}"
 save_dir = f"saved_models/{run_name}"
 
@@ -46,7 +48,7 @@ os.makedirs(save_dir, exist_ok=True)
 
 def tensorboard_launcher(directory_path, port=6006):
     cmd = ["python", "-m", "tensorboard", "--logdir", directory_path, "--port", str(port)]
-    print(f"🚀 TensorBoard launching on http://localhost:{port}")
+    print(f"TensorBoard launching on http://localhost:{port}")
     process = subprocess.Popen(cmd)
     time.sleep(3)
     webbrowser.open(f"http://localhost:{port}/")
@@ -95,13 +97,14 @@ assert len(action_shape) == 1
 
 dqn_agent = DQN(obs_dim=obs_shape[0],
                 action_dim=21, # 21 discretized actions; unit: 5 stocks
+                n_tickers=N_tickers,
                 buffer_size=50000,
                 batch_size=64)
 
 new_obs, info = env.reset()
 tensorboard_launcher("runs")
 
-for global_step in range(MAX_EPOCH):
+for global_step in range(MAX_STEP):
 
     curr_obs = new_obs
     action_continuous, action_idx = dqn_agent.act(curr_obs)
@@ -127,7 +130,7 @@ for global_step in range(MAX_EPOCH):
     if truncated or terminated:
         new_obs, _ = env.reset()
 
-    if global_step % 10000 == 0:
+    if global_step % SAVE_EVERY_STEP == 0:
         torch.save(dqn_agent.q_net.state_dict(), os.path.join(save_dir, f"dqn_step_{global_step}.pth"))
 
         obs_rms = env.get_wrapper_attr('obs_rms')

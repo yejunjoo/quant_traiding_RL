@@ -8,18 +8,25 @@ import random
 from collections import deque
 
 class QNetwork(nn.Module):
-    def __init__(self, obs_dim, n_actions, hidden_dim=64):
+    def __init__(self, obs_dim, n_actions, n_tickers, hidden_dim=64):
         super(QNetwork, self).__init__()
-        self.net = nn.Sequential(
+        self.n_tickers = n_tickers
+
+        self.feature_extractor = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, n_actions)
+            nn.ReLU()
         )
 
+        self.heads = nn.ModuleList([
+            nn.Linear(hidden_dim, n_actions) for _ in range(n_tickers)
+        ])
+
     def forward(self, x):
-        return self.net(x)
+        features = self.feature_extractor(x)
+        q_values = torch.stack([head(features) for head in self.heads], dim=1)
+        return q_values
 
 class ReplayBuffer:
     def __init__(self, capacity):
@@ -30,13 +37,13 @@ class ReplayBuffer:
 
     def sample(self, batch_size):
         state, action, reward, next_state, done = zip(*random.sample(self.buffer, batch_size))
-        return np.array(state), action, reward, np.array(next_state), done
+        return np.array(state), np.array(action), reward, np.array(next_state), done
 
     def __len__(self):
         return len(self.buffer)
 
 class DQN:
-    def __init__(self, obs_dim, action_dim=21, lr=5e-4, gamma=0.99, buffer_size=50000, batch_size=64):
+    def __init__(self, obs_dim, n_tickers, action_dim=21, lr=5e-4, gamma=0.99, buffer_size=50000, batch_size=64):
         self.device = "cuda"
 
         # Action Definition (Discretization)
@@ -44,12 +51,14 @@ class DQN:
         # -0.95 : sell 45
         # unit: 5
         self.n_actions = action_dim
+        self.n_tickers = n_tickers
+
         self.action_values = np.linspace(-1.0, 1.0, self.n_actions)
         self.action_map = {idx: self.action_values[idx] for idx in range(self.n_actions)}
 
         # Networks
-        self.q_net = QNetwork(obs_dim, self.n_actions).to(self.device)
-        self.target_net = QNetwork(obs_dim, self.n_actions).to(self.device)
+        self.q_net = QNetwork(obs_dim, self.n_actions, self.n_tickers).to(self.device)
+        self.target_net = QNetwork(obs_dim, self.n_actions, self.n_tickers).to(self.device)
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.target_net.eval()
 
@@ -66,20 +75,31 @@ class DQN:
         self.step_count = 0
 
     def act(self, obs, eval_mode=False):
-        # Epsilon-Greedy Strategy
+
+        actions_idx = []
+        real_actions = []
+
+
+
         if not eval_mode and random.random() < self.epsilon:
             # exploration
-            action_idx = random.randint(0, self.n_actions - 1)
+            for _ in range(self.n_tickers):
+                rand_idx = random.randint(0, self.n_actions - 1)
+                actions_idx.append(rand_idx)
+                real_actions.append(self.action_map[rand_idx])
+
         else:
             # exploitation
             if isinstance(obs, np.ndarray):
                 obs = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(self.device)
             with torch.no_grad():
+                # (1, N_tickers, N_actions)
                 q_values = self.q_net(obs)
-                action_idx = q_values.argmax().item()
 
-        continuous_action = np.array([self.action_map[action_idx]], dtype=np.float32)
-        return continuous_action, action_idx
+                best_actions = q_values.argmax(dim=2).cpu().numpy()[0]
+                actions_idx = best_actions.tolist()
+                real_actions = [self.action_map[idx] for idx in actions_idx]
+        return np.array(real_actions, dtype=np.float32), actions_idx
 
     def step(self, obs, action_idx, reward, next_obs, done):
         # Store transition in buffer
@@ -101,18 +121,18 @@ class DQN:
         states, actions, rewards, next_states, dones = self.buffer.sample(self.batch_size)
 
         states = torch.tensor(states, dtype=torch.float32).to(self.device)
-        actions = torch.tensor(actions, dtype=torch.int64).unsqueeze(1).to(self.device)
+        actions = torch.tensor(actions, dtype=torch.int64).unsqueeze(-1).to(self.device)
         rewards = torch.tensor(rewards, dtype=torch.float32).unsqueeze(1).to(self.device)
         next_states = torch.tensor(next_states, dtype=torch.float32).to(self.device)
         dones = torch.tensor(dones, dtype=torch.float32).unsqueeze(1).to(self.device)
 
         # Current Q values
-        q_values = self.q_net(states).gather(1, actions)
+        q_values = self.q_net(states).gather(2, actions)
 
         # Target Q values (Double DQN logic usually, but here simple DQN for brevity)
         with torch.no_grad():
-            next_q_values = self.target_net(next_states).max(1)[0].unsqueeze(1)
-            target_q_values = rewards + (self.gamma * next_q_values * (1 - dones))
+            next_q_values = self.target_net(next_states).max(dim=2, keepdim=True)[0]
+            target_q_values = rewards.unsqueeze(1) + (self.gamma * next_q_values * (1 - dones.unsqueeze(1)))
 
         loss = nn.MSELoss()(q_values, target_q_values)
 

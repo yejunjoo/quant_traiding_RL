@@ -10,20 +10,23 @@ import numpy as np
 
 from Environment import StockTradingEnv
 from algo.ppo import Actor
+from runner import N_tickers
 
 MODEL_NAME = "StockTrading_PPO_20251218-010409_3"
 EPOCH = "200"
-N_tickers = 3   # need to correspond to model setting
 
+# 다른 종목 테스트하려면, N_tickers로 주지말고, 직접 ticker 리스트를 정해서 주기
+# Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
+
+# 리스트 줄 때 항상 순서 맞춰서 주기
+Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL']
+N_tickers = len(Tickers_candidate)
 
 MODEL_PATH = f"saved_models/{MODEL_NAME}/actor_epoch_{EPOCH}.pth"
 STATS_PATH = f"saved_models/{MODEL_NAME}/obs_rms_epoch_{EPOCH}.pkl"
 
-Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
 START_DATE = "2024-01-01"
 END_DATE = "2025-01-01"
-# 다른 종목 테스트하려면, N_tickers로 주지말고, 직접 ticker 리스트를 정해서 주기
-
 
 BANKRUPT_COEF = 0.0
 TERMINATION_REWARD = -0.5

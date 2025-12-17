@@ -20,10 +20,12 @@ from algo.ppo import PPO, Actor, Critic
 ## todo: Add yaml file reading for hyperparameters ##
 
 # Data
-N_tickers = 3
 Start_date = "2023-01-01"
 End_date = "2024-01-01"
-Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
+
+# Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA'] # Alphabetic Order
+Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL']
+N_tickers = len(Tickers_candidate)
 # 학습 시에는 항상 앞에서부터 종목 사용
 
 # Learning
@@ -38,7 +40,7 @@ Max_balance = 1e4 *N_tickers
 Balance_rand = False    # if False, set to max balance
 Max_trade = 50
 
-run_name = f"StockTrading_PPO_{datetime.now().strftime('%Y%m%d-%H%M%S')}_{N_tickers}"
+run_name = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_PPO_{N_tickers}"
 log_dir = f"runs/{run_name}"
 save_dir = f"saved_models/{run_name}"
 
