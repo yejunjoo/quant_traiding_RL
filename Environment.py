@@ -181,12 +181,9 @@ class StockTradingEnv(gym.Env):
 
         if terminated:
             self.reward = self.termination_reward
-            self.reset()
-        elif truncated:
-            self.reset()
-        else:
-            self.timestep += 1
-            self._get_obs()
+
+        self.timestep += 1
+        self._get_obs()
 
         info = {
             'portfolio_value': self.portfolio_value,

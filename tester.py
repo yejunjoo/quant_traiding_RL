@@ -10,8 +10,8 @@ from matplotlib.lines import Line2D
 from Environment import StockTradingEnv
 from algo.ppo import Actor
 
-MODEL_NAME = "StockTrading_PPO_20251217-030648"
-EPOCH = "1000"
+MODEL_NAME = "StockTrading_PPO_20251217-180918"
+EPOCH = "1100"
 
 MODEL_PATH = f"saved_models/{MODEL_NAME}/actor_epoch_{EPOCH}.pth"
 STATS_PATH = f"saved_models/{MODEL_NAME}/obs_rms_epoch_{EPOCH}.pkl"
@@ -24,7 +24,7 @@ N_tickers = 1
 
 BANKRUPT_COEF = 0.3
 TERMINATION_REWARD = -1.0
-MAX_BALANCE = 1e7
+MAX_BALANCE = 1e4
 BALANCE_RAND = False
 device = 'cuda'
 MAX_TRADE = 50
@@ -63,6 +63,8 @@ def make_env_for_test(data_matrix, balance_rand, bankrupt_coef, termination_rewa
     env.training = False
 
     env = gym.wrappers.NormalizeReward(env)
+
+    env = gym.wrappers.RescaleAction(env, min_action=-1.0, max_action=1.0)
     env = gym.wrappers.ClipAction(env)
     return env
 
@@ -88,7 +90,7 @@ def test():
     obs, info = env.reset()
     done = False
 
-    current_balances = [raw_env.curr_balance]
+    current_balances = [raw_env.portfolio_value]
     rewards = []
     policy_actions = []
     stock_prices_obs = []
@@ -111,7 +113,7 @@ def test():
 
         next_obs, reward, truncated, terminated, info = env.step(action)
 
-        current_balances.append(raw_env.curr_balance)
+        current_balances.append(raw_env.portfolio_value)
         rewards.append(raw_env.reward)
 
         obs = next_obs

@@ -1,5 +1,5 @@
 # runner.py
-# for PPO
+# for DQN
 
 import os
 import subprocess
@@ -12,12 +12,11 @@ from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
 import yfinance as yf
-from Environment import StockTradingEnv
 import gymnasium as gym
-from algo.ppo import PPO, Actor, Critic
+from Environment import StockTradingEnv
+from algo.dqn import DQN
 
-# $ tensorboard --logdir=runs --port=6006 --bind_all
-## todo: Add yaml file reading for hyperparameters ##
+
 
 # Data
 N_tickers = 1
@@ -105,81 +104,60 @@ print(f"Action shape\t: {action_shape}")
 assert len(obs_shape) == 1
 assert len(action_shape) == 1
 
-actor = Actor(obs_dim=obs_shape[0], action_dim=action_shape[0]).to('cuda')
-critic = Critic(obs_dim=obs_shape[0]).to('cuda')
 
-ppo = PPO(actor=actor,
-          critic=critic,
-          rollout_storage=Rollout_storage,
-          obs_shape=obs_shape[0],
-          action_shape=action_shape[0])
+# [DQN 생성]
+dqn_agent = DQN(obs_dim=obs_shape[0],
+                action_dim=1, # 실제론 내부에서 5개 discrete action으로 변환
+                buffer_size=50000,
+                batch_size=64)
 
 new_obs, info = env.reset()
 global_step = 0
-
 tensorboard_launcher("runs")
 
-best_episodic_return = -float('inf')
-epi_return = []
-
 for epoch in range(MAX_EPOCH):
-    print(f"\n\n\t/// ------- EPOCH {epoch}  ------- ///")
-    for batch in range(Rollout_storage):
-        global_step += 1
-        curr_obs = new_obs
-        action = ppo.act(curr_obs)
-        new_obs, reward, truncated, terminated, info = env.step(action)
-        if "episode" in info:
-            epi_return = info['episode']['r']
-            epi_length = info['episode']['l']
-            if isinstance(epi_return, (np.ndarray, list)):
-                epi_return = epi_return[0]
-                epi_length = epi_length[0]
+    # DQN은 Epoch 개념보다는 Total Step 개념이 더 강하지만, 구조 유지를 위해 사용
 
-            print(f"global_step={global_step}, episodic_return={epi_return}")
-            writer.add_scalar("charts/episodic_return", epi_return, global_step)
-            writer.add_scalar("charts/episodic_length", epi_length, global_step)
+    # 1. Action 선택 (DQN은 이산 인덱스와 연속 값을 동시에 반환하도록 설계함)
+    curr_obs = new_obs
+    action_continuous, action_idx = dqn_agent.act(curr_obs)
 
+    # 2. Environment Step
+    new_obs, reward, truncated, terminated, info = env.step(action_continuous)
 
+    global_step += 1
 
+    # 3. 로깅
+    if "episode" in info:
+        epi_return = info['episode']['r']
+        epi_length = info['episode']['l']
+        if isinstance(epi_return, (np.ndarray, list)):
+            epi_return = epi_return[0]
+            epi_length = epi_length[0]
 
-        ppo.step(obs=curr_obs, reward=reward, truncated=truncated, terminated=terminated)
-        if truncated or terminated:
-            new_obs, _ = env.reset()
+        print(f"Step={global_step}, Return={epi_return}, Epsilon={dqn_agent.epsilon:.3f}")
+        writer.add_scalar("charts/episodic_return", epi_return, global_step)
+        writer.add_scalar("charts/epsilon", dqn_agent.epsilon, global_step)
 
-    next_obs_tensor = torch.tensor(new_obs, dtype=torch.float32).to('cuda')
-    loss = ppo.update(next_obs_tensor)
+    # 4. Buffer 저장 (Discrete Index를 저장해야 함!)
+    dqn_agent.step(curr_obs, action_idx, reward, new_obs, truncated or terminated)
 
-    writer.add_scalar("losses/total_loss", loss, global_step)
+    # 5. 학습 (매 스텝마다 혹은 일정 주기마다)
+    loss = dqn_agent.update()
+    writer.add_scalar("losses/q_loss", loss, global_step)
 
-    if epoch % SAVE_EVERY_EPOCH == 0:
-        actor_path = os.path.join(save_dir, f"actor_epoch_{epoch}.pth")
-        critic_path = os.path.join(save_dir, f"critic_epoch_{epoch}.pth")
+    # 6. 리셋 처리
+    if truncated or terminated:
+        new_obs, _ = env.reset()
 
-        torch.save(actor.state_dict(), actor_path)
-        torch.save(critic.state_dict(), critic_path)
-
+    # 7. 모델 저장
+    if global_step % 10000 == 0: # 저장 주기는 스텝 단위로 변경 추천
+        torch.save(dqn_agent.q_net.state_dict(), os.path.join(save_dir, f"dqn_step_{global_step}.pth"))
 
         obs_rms = env.get_wrapper_attr('obs_rms')
-        with open(os.path.join(save_dir, f"obs_rms_epoch_{epoch}.pkl"), "wb") as f:
+        with open(os.path.join(save_dir, f"obs_rms_step_{global_step}.pkl"), "wb") as f:
             pickle.dump(obs_rms, f)
 
-        print(f"Saved model checkpoint at epoch {epoch}")
+        print(f"Saved model at step {global_step}")
 
-
-        if epi_return > best_episodic_return:
-            best_episodic_return = epi_return
-            print(f"Best Policy. Return: {best_episodic_return:.2f}")
-
-            best_actor_path = os.path.join(save_dir, "best_actor.pth")
-            best_critic_path = os.path.join(save_dir, "best_critic.pth")
-            best_stats_path = os.path.join(save_dir, "best_obs_rms.pkl")
-
-            torch.save(actor.state_dict(), best_actor_path)
-            torch.save(critic.state_dict(), best_critic_path)
-
-            obs_rms = env.get_wrapper_attr('obs_rms')
-            with open(best_stats_path, "wb") as f:
-                pickle.dump(obs_rms, f)
-            print(f"Updated Best model at epoch {epoch}")
 writer.close()
