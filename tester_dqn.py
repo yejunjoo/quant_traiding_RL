@@ -10,21 +10,25 @@ import os
 from Environment import StockTradingEnv
 from algo.dqn import DQN
 
-MODEL_NAME = "20251218-033924_DQN_1"
-STEP = "10000"
+MODEL_NAME = "20251218-173548_DQN_1"
+STEP = "2500000"
 
-# Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
+# Tickers_candidate = ['AAPL', 'AMZN', 'F', 'GOOGL', 'JPM', 'META', 'MSFT', 'NVDA', 'TSLA', 'UBER', 'XOM']
+# Tickers_candidate = ['AAPL', 'F', 'JPM', 'META', 'NVDA', 'TSLA', 'UBER', 'XOM']
+
 # 항상 위에 있는 순서대로 줘야함
-Tickers_candidate = ['AAPL']
+Tickers_candidate = ['UBER']
+# Tickers_candidate = ['AAPL', 'META', 'MSFT']
+# Tickers_candidate = ['META', 'MSFT', 'NVDA']
 N_tickers = len(Tickers_candidate)
 
 MODEL_PATH = f"saved_models/{MODEL_NAME}/dqn_step_{STEP}.pth"
 STATS_PATH = f"saved_models/{MODEL_NAME}/obs_rms_step_{STEP}.pkl"
 
-START_DATE = "2023-01-01"
-END_DATE = "2024-01-01"
+START_DATE = "2024-01-01"
+END_DATE = "2025-01-01"
 
-BANKRUPT_COEF = 0.3
+BANKRUPT_COEF = 0.0
 TERMINATION_REWARD = -0.5
 MAX_BALANCE = 1e4*N_tickers
 BALANCE_RAND = False

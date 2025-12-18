@@ -20,18 +20,19 @@ from algo.ppo import PPO, Actor, Critic
 ## todo: Add yaml file reading for hyperparameters ##
 
 # Data
-Start_date = "2023-01-01"
+Start_date = "2019-01-01"
 End_date = "2024-01-01"
 
-# Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA'] # Alphabetic Order
-Tickers_candidate = ['AAPL']
+# Tickers_candidate = ['AAPL', 'AMZN', 'F', 'GOOGL', 'JPM', 'META', 'MSFT', 'NVDA', 'TSLA', 'UBER', 'XOM']
+# Tickers_candidate = ['AAPL', 'F', 'JPM', 'META', 'NVDA', 'TSLA', 'UBER', 'XOM']
+Tickers_candidate = ['UBER']
 N_tickers = len(Tickers_candidate)
 # 학습 시에는 항상 앞에서부터 종목 사용
 
 # Learning
-MAX_EPOCH = int(1e8) # 백만
-Rollout_storage = 1024 # 10240    # min 64
-SAVE_EVERY_EPOCH = 1 # 500
+Rollout_storage = 2048 # 2048    # min 64
+SAVE_EVERY_EPOCH = 1000 # 2000
+MAX_EPOCH = int(SAVE_EVERY_EPOCH * 200)
 
 # Env
 Bankrupt_coef = 0.0

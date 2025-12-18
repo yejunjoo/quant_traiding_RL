@@ -19,20 +19,21 @@ from algo.dqn import DQN
 
 
 # Data
-Start_date = "2023-01-01"
+Start_date = "2019-01-01"
 End_date = "2024-01-01"
-# Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL', 'META', 'MSFT', 'NVDA', 'TSLA']
+# Tickers_candidate = ['AAPL', 'AMZN', 'F', 'GOOGL', 'JPM', 'META', 'MSFT', 'NVDA', 'TSLA', 'UBER', 'XOM']
+# Tickers_candidate = ['AAPL', 'F', 'JPM', 'META', 'NVDA', 'TSLA', 'UBER', 'XOM']
 
 # 항상 위에 주어진 순서대로 줘야함.
-Tickers_candidate = ['AAPL']
+Tickers_candidate = ['UBER']
 N_tickers = len(Tickers_candidate)
 
 # Learning
-MAX_STEP = int(1e8) # 백만
-SAVE_EVERY_STEP = 1000
+SAVE_EVERY_STEP = 5e5   # 1e6
+MAX_STEP = int(SAVE_EVERY_STEP * 100)
 
 # Env
-Bankrupt_coef = 0.3
+Bankrupt_coef = 0.0
 Termination_reward = -0.5
 Max_balance = 1e4*N_tickers
 Balance_rand = False    # if False, set to max balance
