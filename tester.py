@@ -11,15 +11,15 @@ import numpy as np
 from Environment import StockTradingEnv
 from algo.ppo import Actor
 
-MODEL_NAME = "20251218-173411_PPO_1"
-EPOCH = "2000"
+MODEL_NAME = "20251219-231440_PPO_4"
+EPOCH = "1000"
 
 # 다른 종목 테스트하려면, N_tickers로 주지말고, 직접 ticker 리스트를 정해서 주기
 # Tickers_candidate = ['AAPL', 'AMZN', 'F', 'GOOGL', 'JPM', 'META', 'MSFT', 'NVDA', 'TSLA', 'UBER', 'XOM']
 # Tickers_candidate = ['AAPL', 'F', 'JPM', 'META', 'NVDA', 'TSLA', 'UBER', 'XOM']
 
 # 리스트 줄 때 항상 순서 맞춰서 주기
-Tickers_candidate = ['XOM']
+Tickers_candidate = ['F', 'TSLA', 'UBER', "XOM"]
 # Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL']
 # Tickers_candidate = ['AAPL', 'META', 'MSFT']
 # Tickers_candidate = ['META', 'MSFT', 'NVDA']

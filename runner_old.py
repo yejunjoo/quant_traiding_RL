@@ -26,7 +26,7 @@ End_date = "2024-01-01"
 # Tickers_candidate = ['AAPL', 'AMZN', 'F', 'GOOGL', 'JPM', 'META', 'MSFT', 'NVDA', 'TSLA', 'UBER', 'XOM']
 # Tickers_candidate = ['AAPL', 'F', 'JPM', 'META', 'NVDA', 'TSLA', 'UBER', 'XOM']
 
-Tickers_candidate = ['AAPL', 'JPM', 'META', "NVDA"]
+Tickers_candidate = ['AAPL']
 N_tickers = len(Tickers_candidate)
 # 학습 시에는 항상 앞에서부터 종목 사용
 

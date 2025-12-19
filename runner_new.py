@@ -20,6 +20,7 @@ from algo.ppo import PPO, Actor, Critic
 ## todo: Add yaml file reading for hyperparameters ##
 
 # Data
+# 2019
 Start_date = "2019-01-01"
 End_date = "2024-01-01"
 
@@ -32,15 +33,17 @@ N_tickers = len(Tickers_candidate)
 
 # Learning
 Rollout_storage = 2048 # 2048    # min 64
-SAVE_EVERY_EPOCH = 1000 # 2000
+SAVE_EVERY_EPOCH = 50 # 2000
 MAX_EPOCH = int(SAVE_EVERY_EPOCH * 200)
 
 # Env
-Bankrupt_coef = 0.0
-Termination_reward = -0.5
+Bankrupt_coef = 0.2
+Termination_reward = -0.1
 Max_balance = 1e4 *N_tickers
 Balance_rand = True    # if False, set to max balance
 Max_trade = 50
+Window_size = 5
+Fee_rate = 0.0015   # 0.15%
 
 run_name = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_PPO_{N_tickers}"
 log_dir = f"runs/{run_name}"
@@ -58,17 +61,34 @@ def tensorboard_launcher(directory_path, port=6006):
     webbrowser.open(f"http://localhost:{port}/")
     return process
 
-def make_env(data_matrix, balance_rand, bankrupt_coef, termination_reward, max_balance, max_trade):
+
+def get_ticker_info(tickers):
+    info_list = []
+    for t in tickers:
+        dat = yf.Ticker(t)
+        info = dat.info
+        extracted = {
+            'targetMeanPrice': info.get('targetMeanPrice', 0),
+            'forwardPE': info.get('forwardPE', 0),
+            'dividendYield': info.get('dividendYield', 0)
+        }
+        info_list.append(extracted)
+    return info_list
+
+def make_env(data_matrix, ticker_info_list, balance_rand, bankrupt_coef, termination_reward, max_balance, max_trade, window_size, fee_rate):
     env = StockTradingEnv(df_matrix=data_matrix,
+                          ticker_info_list=ticker_info_list,
                           balance_rand=balance_rand,
                           bankrupt_coef=bankrupt_coef,
                           termination_reward=termination_reward,
                           max_balance=max_balance,
-                          max_trade=max_trade)
+                          max_trade=max_trade,
+                          window_size=window_size,
+                          fee_rate=fee_rate)
     env = gym.wrappers.RecordEpisodeStatistics(env)
     env = gym.wrappers.FlattenObservation(env)
     env = gym.wrappers.NormalizeObservation(env)
-    env = gym.wrappers.NormalizeReward(env)
+    # env = gym.wrappers.NormalizeReward(env)
     env = gym.wrappers.RescaleAction(env, min_action=-1.0, max_action=1.0)
     env = gym.wrappers.ClipAction(env)
 
@@ -90,7 +110,8 @@ def shape_data_matrix(tickers, start, end):
     return data_matrix
 
 data_matrix = shape_data_matrix(Tickers_candidate[0:N_tickers], start=Start_date, end=End_date)
-env = make_env(data_matrix, Balance_rand, Bankrupt_coef, Termination_reward, Max_balance, Max_trade)
+ticker_info_list = get_ticker_info(Tickers_candidate)
+env = make_env(data_matrix, ticker_info_list, Balance_rand, Bankrupt_coef, Termination_reward, Max_balance, Max_trade, Window_size, Fee_rate)
 obs_shape = env.observation_space.shape
 action_shape = env.action_space.shape
 print(f"Obs shape\t: {obs_shape}")

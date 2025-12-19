@@ -1,36 +1,41 @@
+# tester.py
+
 import yfinance as yf
 import gymnasium as gym
 import torch
 import matplotlib.pyplot as plt
 import pickle
-import numpy as np
 from matplotlib.lines import Line2D
-import os
+import numpy as np
 
 from Environment import StockTradingEnv
-from algo.dqn import DQN
+from algo.ppo import Actor
 
-MODEL_NAME = "20251219-145325_DQN_1_w_rand_balance"
-STEP = "4500000"
+MODEL_NAME = "20251218-173411_PPO_1"
+EPOCH = "2000"
 
+# 다른 종목 테스트하려면, N_tickers로 주지말고, 직접 ticker 리스트를 정해서 주기
 # Tickers_candidate = ['AAPL', 'AMZN', 'F', 'GOOGL', 'JPM', 'META', 'MSFT', 'NVDA', 'TSLA', 'UBER', 'XOM']
 # Tickers_candidate = ['AAPL', 'F', 'JPM', 'META', 'NVDA', 'TSLA', 'UBER', 'XOM']
 
-# 항상 위에 있는 순서대로 줘야함
-Tickers_candidate = ['F']
+# 리스트 줄 때 항상 순서 맞춰서 주기
+Tickers_candidate = ['XOM']
+# Tickers_candidate = ['AAPL', 'AMZN', 'GOOGL']
 # Tickers_candidate = ['AAPL', 'META', 'MSFT']
 # Tickers_candidate = ['META', 'MSFT', 'NVDA']
-N_tickers = len(Tickers_candidate)
-
-MODEL_PATH = f"saved_models/{MODEL_NAME}/dqn_step_{STEP}.pth"
-STATS_PATH = f"saved_models/{MODEL_NAME}/obs_rms_step_{STEP}.pkl"
 
 START_DATE = "2024-01-01"
 END_DATE = "2025-01-01"
 
+
+N_tickers = len(Tickers_candidate)
+
+MODEL_PATH = f"saved_models/{MODEL_NAME}/actor_epoch_{EPOCH}.pth"
+STATS_PATH = f"saved_models/{MODEL_NAME}/obs_rms_epoch_{EPOCH}.pkl"
+
 BANKRUPT_COEF = 0.0
 TERMINATION_REWARD = -0.5
-MAX_BALANCE = 1e4*N_tickers
+MAX_BALANCE = 1e4 *N_tickers
 BALANCE_RAND = False
 device = 'cuda'
 MAX_TRADE = 50
@@ -66,17 +71,18 @@ def make_env_for_test(data_matrix, balance_rand, bankrupt_coef, termination_rewa
         loaded_obs_rms = pickle.load(f)
     env.obs_rms = loaded_obs_rms
     print(f"Loaded observation statistics from {stats_path}")
-
     env.training = False
+
     env = gym.wrappers.NormalizeReward(env)
+
     env = gym.wrappers.RescaleAction(env, min_action=-1.0, max_action=1.0)
     env = gym.wrappers.ClipAction(env)
     return env
 
 
 def test():
-    data_matrix = shape_data_matrix(Tickers_candidate[0:N_tickers], START_DATE, END_DATE)
-
+    target_tickers = Tickers_candidate[0:N_tickers]
+    data_matrix = shape_data_matrix(target_tickers, START_DATE, END_DATE)
     env = make_env_for_test(data_matrix=data_matrix,
                             balance_rand=BALANCE_RAND,
                             bankrupt_coef=BANKRUPT_COEF,
@@ -84,19 +90,13 @@ def test():
                             max_balance=MAX_BALANCE,
                             max_trade=MAX_TRADE,
                             stats_path=STATS_PATH)
-
     obs_shape = env.observation_space.shape[0]
+    action_shape = env.action_space.shape[0]
 
-    dqn_agent = DQN(obs_dim=obs_shape,
-                    action_dim=21, # 21 discretized actions; unit: 5 stocks
-                    n_tickers=N_tickers,
-                    buffer_size=50000,
-                    batch_size=64)
-    dqn_agent.q_net.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    actor = Actor(obs_dim=obs_shape, action_dim=action_shape).to(device)
+    actor.load_state_dict(torch.load(MODEL_PATH, map_location=device))
     print(f"Loaded pre-trained model from \n{MODEL_PATH}")
-
-
-    dqn_agent.q_net.eval()
+    actor.eval()
 
     raw_env = env.unwrapped
     obs, info = env.reset()
@@ -104,28 +104,30 @@ def test():
 
     current_balances = [raw_env.portfolio_value]
     rewards = []
-
     policy_actions = []
     stock_prices_obs = []
 
     stock_prices_gt = data_matrix[:,:,0]
 
+
     print("Start Testing ...")
 
     while not done:
-        # dqn_agent.act returns (continuous_action, action_idx)
-        action_continuous, action_idx = dqn_agent.act(obs, eval_mode=True)
-
-        real_action = action_continuous * MAX_TRADE
-        policy_actions.append(real_action)
+        with torch.no_grad():
+            obs_tensor = torch.tensor(obs, dtype=torch.float32).to(device).unsqueeze(0)
+            action_tensor = actor(obs_tensor)
+            action = action_tensor.cpu().numpy()
 
         current_prices = []
         for i in range(N_tickers):
-            p = raw_env.obs_dict['market'][i * 5]
+            p = raw_env.obs_dict['market'][i*5]
             current_prices.append(p)
         stock_prices_obs.append(current_prices)
 
-        next_obs, reward, truncated, terminated, info = env.step(action_continuous)
+
+        policy_actions.append(action[0] *MAX_TRADE)
+
+        next_obs, reward, truncated, terminated, info = env.step(action.flatten())
 
         current_balances.append(raw_env.portfolio_value)
         rewards.append(raw_env.reward)
@@ -134,23 +136,21 @@ def test():
         done = terminated or truncated
 
     current_balances = current_balances[:-1]
-    # last value is balance that is reset
-
-    policy_actions = np.array(policy_actions)
-    stock_prices_obs = np.array(stock_prices_obs)
-
+    # last value is blance that is reset
     print("Done Testing.")
     print(f"Prices: {len(stock_prices_obs)}, Actions: {len(policy_actions)}")
     print(f"Rewards: {len(rewards)}, Balances: {len(current_balances)}")
 
+    stock_prices_obs = np.array(stock_prices_obs)
+    policy_actions = np.array(policy_actions)
 
 
     steps = range(len(current_balances))
     stock_prices_gt = stock_prices_gt[:len(steps)]
 
-    for i in range(N_tickers):
-        ticker_name = Tickers_candidate[i]
 
+    for i in range(N_tickers):
+        ticker_name = target_tickers[i]
         fig, axes = plt.subplots(4, 1, figsize=(12, 16), sharex=True)
         fig.canvas.manager.set_window_title(f"Analysis Report - {ticker_name}")
 
@@ -174,7 +174,7 @@ def test():
         ax3 = axes[2]
         ax3.set_title(f"3. Stock Price ({ticker_name})", fontweight='bold')
         ax3.plot(steps, stock_prices_gt[:, i], color='black', linestyle='--', label='Ground Truth')
-        ax3.plot(steps, stock_prices_obs[:, i], color='tab:blue', label='Observed')
+        ax3.plot(steps, stock_prices_obs[:,i], color='tab:blue', label='Observed')
         ax3.set_ylabel('Price')
         ax3.legend(loc='upper left')
         ax3.grid(True, alpha=0.3)
@@ -182,18 +182,15 @@ def test():
         # 4. Policy Actions
         ax4 = axes[3]
         ax4.set_title(f"4. Agent Action Volume ({ticker_name})", fontweight='bold')
-
         actions_i = policy_actions[:, i]
-        action_colors = ['green' if x > 0 else 'red' if x < 0 else 'gray' for x in actions_i]
+        action_colors = ['green' if x >= 0 else 'red' for x in actions_i]
         ax4.bar(steps, actions_i, color=action_colors, width=1.0)
         ax4.axhline(0, color='black', linewidth=0.8)
         ax4.set_ylabel('Volume')
         ax4.set_xlabel('Steps')
         ax4.grid(True, alpha=0.3)
-
         legend_elements = [Line2D([0], [0], color='green', lw=4, label='Buy'),
-                           Line2D([0], [0], color='red', lw=4, label='Sell'),
-                           Line2D([0], [0], color='gray', lw=4, label='Hold')]
+                           Line2D([0], [0], color='red', lw=4, label='Sell')]
         ax4.legend(handles=legend_elements, loc='upper left')
         plt.tight_layout()
 
